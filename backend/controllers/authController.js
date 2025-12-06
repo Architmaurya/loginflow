@@ -362,3 +362,7 @@ export const me = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+router.get("/welcome", (req, res) => {
+  res.json({ status: "server alive" });
+});

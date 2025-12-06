@@ -14,23 +14,27 @@ import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Register
+// ------------------ KEEP ALIVE ROUTE ------------------
+router.get("/welcome", (req, res) => {
+  res.json({ message: "Server is awake!" });
+});
+
+// ------------------ REGISTER ------------------
 router.post("/register", register);
 router.post("/verify-register-otp", verifyRegisterOTP);
 
-// Login / OTP
+// ------------------ LOGIN + OTP ------------------
 router.post("/login", login);
 router.post("/verify-otp", verifyOTP);
 router.post("/resend-otp", resendOTP);
 
-// TOKEN REFRESH (Fix: allow GET + POST)
-router.get("/refresh", refresh);
-router.post("/refresh", refresh);
+// ------------------ TOKENS ------------------
+router.post("/refresh", refresh); // final correct way
 
-// Logout
+// ------------------ LOGOUT ------------------
 router.post("/logout", logout);
 
-// Protected route
+// ------------------ PROTECTED ROUTE ------------------
 router.get("/me", protect, me);
 
 export default router;
