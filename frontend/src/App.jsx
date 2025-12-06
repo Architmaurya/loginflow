@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
@@ -8,6 +8,23 @@ import { useAuth } from "./context/AuthContext.jsx";
 
 const App = () => {
   const { user } = useAuth();
+
+  // Backend base URL from env
+  const API_URL = import.meta.env.VITE_API_URL;
+
+  useEffect(() => {
+    const pingBackend = () => {
+      fetch(`${API_URL}/auth/welcome`)
+        .then(() => console.log("🔥 Backend keep-alive ping success"))
+        .catch(() => console.log("⚠ Backend ping failed"));
+    };
+
+    pingBackend(); // first call immediately
+
+    const interval = setInterval(pingBackend, 180000); // every 3 min
+
+    return () => clearInterval(interval);
+  }, [API_URL]);
 
   return (
     <Routes>
