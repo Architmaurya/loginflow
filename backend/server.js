@@ -8,49 +8,32 @@ import authRoutes from "./routes/authRoutes.js";
 dotenv.config();
 const app = express();
 
+// Connect Database
 connectDB();
 
+// Middlewares
 app.use(express.json());
 app.use(cookieParser());
 
-// ----------------------
-// FIXED CORS CONFIG
-// ----------------------
-const rawOrigins = process.env.FRONTEND_URL || "";
-const allowedOrigins = rawOrigins.split(",");
-
-console.log("Allowed Origins:", allowedOrigins);
+// Allowed Frontend Origin (IMPORTANT)
+const FRONTEND_URL = process.env.FRONTEND_URL;
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like Postman)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.log("❌ BLOCKED BY CORS:", origin);
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true, // allow cookies
+    origin: FRONTEND_URL,  
+    credentials: true,     
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   })
 );
 
-// ----------------------
-// ROUTES
-// ----------------------
+// API Routes
 app.use("/api/auth", authRoutes);
 
+// Default Route
 app.get("/", (req, res) => {
-  res.json({ message: "Advanced Auth API running" });
+  res.json({ message: "Advanced Auth API is running 🚀" });
 });
 
-// ----------------------
-// START SERVER
-// ----------------------
-const PORT = process.env.PORT ;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Server Start
+const PORT = process.env.PORT;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
