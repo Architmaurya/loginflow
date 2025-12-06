@@ -4,8 +4,8 @@ export const sendMail = async (to, subject, html) => {
   try {
     const transporter = nodemailer.createTransport({
       host: process.env.MAIL_HOST, // ⬅️ your SMTP host
-      port: 587,                   // standard SMTP port
-      secure: false,               // use TLS
+      port: 465,                   // standard SMTPS port
+      secure: true,                // use SSL/TLS
       auth: {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASS,
