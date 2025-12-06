@@ -13,22 +13,44 @@ connectDB();
 app.use(express.json());
 app.use(cookieParser());
 
-const FRONTEND_URL = process.env.FRONTEND_URL;
+// ----------------------
+// FIXED CORS CONFIG
+// ----------------------
+const rawOrigins = process.env.FRONTEND_URL || "";
+const allowedOrigins = rawOrigins.split(",");
+
+console.log("Allowed Origins:", allowedOrigins);
 
 app.use(
   cors({
-    origin: FRONTEND_URL,
-    credentials: true,
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log("❌ BLOCKED BY CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true, // allow cookies
   })
 );
 
+// ----------------------
+// ROUTES
+// ----------------------
 app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => {
   res.json({ message: "Advanced Auth API running" });
 });
 
-const PORT = process.env.PORT || 5000;
+// ----------------------
+// START SERVER
+// ----------------------
+const PORT = process.env.PORT ;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
