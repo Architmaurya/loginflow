@@ -363,6 +363,3 @@ export const me = async (req, res) => {
   }
 };
 
-router.get("/welcome", (req, res) => {
-  res.json({ status: "server alive" });
-});
