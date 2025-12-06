@@ -3,10 +3,12 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/generateTokens.js";
 import { sendMail } from "../utils/mailer.js";
+import { buildEmailTemplate } from "../utils/emailTemplate.js";
+import axios from "axios";
 
 // In-memory stores for OTPs (Replace with Redis for production)
-const registerOTPs = {}; 
-const loginOTPs = {};    
+const registerOTPs = {};
+const loginOTPs = {};
 
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000);
 
@@ -70,13 +72,18 @@ export const register = async (req, res) => {
     registerOTPs[email] = {
       otp,
       password,
-      expiresAt: Date.now() + 1 * 60 * 1000, // 1 minute
+      expiresAt: Date.now() + 1 * 60 * 1000,
     };
 
+    // 🔹 BEAUTIFUL EMAIL TEMPLATE
     await sendMail(
       email,
       "Your Registration OTP",
-      `<h2>Your OTP is:</h2><h1>${otp}</h1><p>It is valid for <strong>1 minute</strong>.</p>`
+      buildEmailTemplate(
+        "Verify Your Email",
+        "Use the OTP below to complete your registration.",
+        otp
+      )
     );
 
     return res.json({ message: "OTP sent to your email.", email });
@@ -104,7 +111,7 @@ export const verifyRegisterOTP = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    await User.create({
+    const user = await User.create({
       email,
       password: hashedPassword,
       role: "user",
@@ -112,19 +119,56 @@ export const verifyRegisterOTP = async (req, res) => {
 
     delete registerOTPs[email];
 
+    // -----------------------------------------
+    // 🔹 BEAUTIFUL WELCOME EMAIL
+    // -----------------------------------------
     await sendMail(
       email,
-      "Welcome!",
-      `<h2>Welcome!</h2><p>Your registration was successful 🎉</p>`
+      "Welcome! 🎉",
+      buildEmailTemplate("Welcome! 🎉", "Your registration was successful!")
     );
+
+    // -----------------------------------------
+    // 🔹 SEND DATA TO N8N (Google Sheet)
+    // -----------------------------------------
+    try {
+      const payload = {
+        email,
+        date: new Date().toISOString().split("T")[0],
+        time: new Date().toISOString().split("T")[1].slice(0, 8),
+      };
+
+      console.log("🔥 Sending data to N8N...");
+      console.log("➡ Webhook URL:", process.env.N8N_WEBHOOK_URL);
+      console.log("➡ Payload:", payload);
+
+      await axios.post(process.env.N8N_WEBHOOK_URL, payload);
+
+      console.log("✅ N8N request success!");
+    } catch (err) {
+      console.error("❌ N8N Webhook Error:");
+      console.error("   • Message:", err.message);
+
+      if (err.response) {
+        console.error("   • Status:", err.response.status);
+        console.error("   • Response Data:", err.response.data);
+      }
+
+      if (err.request) {
+        console.error("   • No response received from N8N");
+      }
+    }
 
     return res.json({ message: "Registration successful!" });
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
+
+
+
 
 // ---------------- Login with OTP (1 minute) ----------------
 
@@ -141,13 +185,18 @@ export const login = async (req, res) => {
     const otp = generateOTP();
     loginOTPs[email] = {
       otp,
-      expiresAt: Date.now() + 1 * 60 * 1000, // 1 minute
+      expiresAt: Date.now() + 1 * 60 * 1000,
     };
 
+    // 🔹 BEAUTIFUL EMAIL TEMPLATE
     await sendMail(
       email,
       "Your Login OTP",
-      `<p>Your OTP for login is:</p><h1>${otp}</h1><p>Valid for <strong>1 minute</strong>.</p>`
+      buildEmailTemplate(
+        "Login Verification",
+        "Use the OTP below to login.",
+        otp
+      )
     );
 
     return res.json({ message: "OTP sent to your email", email });
@@ -191,33 +240,37 @@ export const resendOTP = async (req, res) => {
     const { email, type } = req.body;
 
     const otp = generateOTP();
-    const expiresAt = Date.now() + 1 * 60 * 1000; // 1 minute
+    const expiresAt = Date.now() + 1 * 60 * 1000;
 
     if (type === "register") {
-      if (!registerOTPs[email])
-        registerOTPs[email] = {};
-
+      if (!registerOTPs[email]) registerOTPs[email] = {};
       registerOTPs[email].otp = otp;
       registerOTPs[email].expiresAt = expiresAt;
 
       await sendMail(
         email,
         "New Registration OTP",
-        `<h1>${otp}</h1><p>Your OTP is valid for <strong>1 minute</strong>.</p>`
+        buildEmailTemplate(
+          "New Registration OTP",
+          "Here is your new OTP. It is valid for 1 minute.",
+          otp
+        )
       );
     }
 
     if (type === "login") {
-      if (!loginOTPs[email])
-        loginOTPs[email] = {};
-
+      if (!loginOTPs[email]) loginOTPs[email] = {};
       loginOTPs[email].otp = otp;
       loginOTPs[email].expiresAt = expiresAt;
 
       await sendMail(
         email,
         "New Login OTP",
-        `<h1>${otp}</h1><p>Your OTP is valid for <strong>1 minute</strong>.</p>`
+        buildEmailTemplate(
+          "New Login OTP",
+          "Here is your new OTP. It is valid for 1 minute.",
+          otp
+        )
       );
     }
 
