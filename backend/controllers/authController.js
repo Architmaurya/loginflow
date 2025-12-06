@@ -96,6 +96,7 @@ export const register = async (req, res) => {
 
 // ---------------- OTP Verification (Signup) ----------------
 
+// ---------------- OTP Verification (Signup) ----------------
 export const verifyRegisterOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -111,7 +112,7 @@ export const verifyRegisterOTP = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    const user = await User.create({
+    await User.create({
       email,
       password: hashedPassword,
       role: "user",
@@ -119,53 +120,36 @@ export const verifyRegisterOTP = async (req, res) => {
 
     delete registerOTPs[email];
 
-    // -----------------------------------------
-    // 🔹 BEAUTIFUL WELCOME EMAIL
-    // -----------------------------------------
+    // Welcome Email
     await sendMail(
       email,
-      "Welcome! 🎉",
-      buildEmailTemplate("Welcome! 🎉", "Your registration was successful!")
+      "Welcome!",
+      `<h2>Welcome!</h2><p>Your registration was successful 🎉</p>`
     );
 
-    // -----------------------------------------
-    // 🔹 SEND DATA TO N8N (Google Sheet)
-    // -----------------------------------------
+    // ⭐ FIXED: Use IST time instead of UTC
+    const now = new Date();
+    const istDate = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const istTime = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata" });
+
     try {
-      const payload = {
+      await axios.post(process.env.N8N_WEBHOOK_URL, {
         email,
-        date: new Date().toISOString().split("T")[0],
-        time: new Date().toISOString().split("T")[1].slice(0, 8),
-      };
-
-      console.log("🔥 Sending data to N8N...");
-      console.log("➡ Webhook URL:", process.env.N8N_WEBHOOK_URL);
-      console.log("➡ Payload:", payload);
-
-      await axios.post(process.env.N8N_WEBHOOK_URL, payload);
-
-      console.log("✅ N8N request success!");
+        date: istDate,
+        time: istTime,
+      });
     } catch (err) {
-      console.error("❌ N8N Webhook Error:");
-      console.error("   • Message:", err.message);
-
-      if (err.response) {
-        console.error("   • Status:", err.response.status);
-        console.error("   • Response Data:", err.response.data);
-      }
-
-      if (err.request) {
-        console.error("   • No response received from N8N");
-      }
+      console.error("N8N Webhook Error:", err.message);
     }
 
     return res.json({ message: "Registration successful!" });
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 
