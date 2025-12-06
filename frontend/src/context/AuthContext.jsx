@@ -12,23 +12,42 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const tryRefresh = async () => {
+
+      // 🔥 FIX: Skip refresh if NO cookie present
+      const hasRefreshCookie = document.cookie.includes("jwt=");
+      if (!hasRefreshCookie) {
+        console.log("⏩ No refresh token cookie found — skipping refresh.");
+        setLoading(false);
+        return;
+      }
+
       try {
         const res = await api.post("/auth/refresh");
+
+        console.log("🔄 Refresh success:", res.data);
+
         setUser(res.data.user);
         setAccessToken(res.data.accessToken);
         localStorage.setItem("accessToken", res.data.accessToken);
+
       } catch (err) {
+        console.log("❌ Refresh failed — clearing session");
+
         setUser(null);
         setAccessToken("");
         localStorage.removeItem("accessToken");
+
       } finally {
         setLoading(false);
       }
     };
+
     tryRefresh();
   }, []);
 
   const setAuthFromLoginResponse = (data) => {
+    console.log("✅ Login success:", data);
+
     setUser(data.user);
     setAccessToken(data.accessToken);
     localStorage.setItem("accessToken", data.accessToken);
@@ -37,7 +56,11 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       await api.post("/auth/logout");
-    } catch (err) {}
+      console.log("🚪 Logged out");
+    } catch (err) {
+      console.log("Logout error:", err);
+    }
+
     setUser(null);
     setAccessToken("");
     localStorage.removeItem("accessToken");
