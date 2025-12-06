@@ -6,16 +6,23 @@ import { sendMail } from "../utils/mailer.js";
 import { buildEmailTemplate } from "../utils/emailTemplate.js";
 import axios from "axios";
 
-// In-memory stores for OTPs (Replace with Redis for production)
+// TEMP STORAGE
 const registerOTPs = {};
 const loginOTPs = {};
 
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000);
 
+// ---------------------------------------------------
+// TOKENS
+// ---------------------------------------------------
 const sendTokens = (user, res) => {
+  console.log("🔐 Sending login tokens for user:", user.email);
+
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
+
   const isProd = process.env.NODE_ENV === "production";
+  console.log("🌎 Environment:", isProd ? "PRODUCTION" : "DEVELOPMENT");
 
   res.cookie("jwt", refreshToken, {
     httpOnly: true,
@@ -23,6 +30,8 @@ const sendTokens = (user, res) => {
     sameSite: isProd ? "none" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
+
+  console.log("✅ Refresh token stored in cookie.");
 
   return res.json({
     accessToken,
@@ -34,251 +43,273 @@ const sendTokens = (user, res) => {
   });
 };
 
-// ---------------- Registration (1-minute OTP) ----------------
-
+// ---------------------------------------------------
+// REGISTER
+// ---------------------------------------------------
 export const register = async (req, res) => {
+  console.log("📩 REGISTER Request received:", req.body);
+
   try {
     const { email, password } = req.body;
 
-    if (!email || !password)
+    // Validation
+    if (!email || !password) {
+      console.log("❌ Missing fields");
       return res.status(400).json({ message: "Email and password are required" });
+    }
 
-    // ---------------- PASSWORD VALIDATION ----------------
-    if (password.length < 8)
-      return res.status(400).json({ message: "Password must be at least 8 characters long." });
-
-    if (/^\d+$/.test(password))
-      return res.status(400).json({ message: "Password cannot be only numbers." });
-
-    if (/^(.)\1+$/.test(password))
-      return res.status(400).json({ message: "Password cannot contain repeating characters." });
-
-    const weakList = ["password", "123456", "qwerty", "111111", "abc123", "123123", "password123", "admin", "letmein", "welcome"];
-    if (weakList.includes(password.toLowerCase()))
-      return res.status(400).json({ message: "Password is too common and insecure." });
-
-    const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?#&])[A-Za-z\d@$!%*?#&]{8,}$/;
-    if (!strongPassword.test(password))
-      return res.status(400).json({
-        message: "Password must include uppercase, lowercase, number, and special character (@$!%*?#&).",
-      });
-
-    // Check if user exists
-    if (await User.findOne({ email }))
+    if (await User.findOne({ email })) {
+      console.log("❌ User already exists:", email);
       return res.status(400).json({ message: "User already exists" });
+    }
 
-    // Generate OTP (1 minute)
+    // OTP
     const otp = generateOTP();
     registerOTPs[email] = {
       otp,
       password,
-      expiresAt: Date.now() + 1 * 60 * 1000,
+      expiresAt: Date.now() + 60 * 1000,
     };
 
-    // 🔹 BEAUTIFUL EMAIL TEMPLATE
+    console.log("🔢 Registration OTP generated:", otp);
+
     await sendMail(
       email,
       "Your Registration OTP",
-      buildEmailTemplate(
-        "Verify Your Email",
-        "Use the OTP below to complete your registration.",
-        otp
-      )
+      buildEmailTemplate("Verify Email", "Enter this OTP to complete registration.", otp)
     );
 
-    return res.json({ message: "OTP sent to your email.", email });
+    console.log("📧 Registration OTP email sent to:", email);
+
+    return res.json({ message: "OTP sent", email });
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ REGISTER ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ---------------- OTP Verification (Signup) ----------------
-
-// ---------------- OTP Verification (Signup) ----------------
+// ---------------------------------------------------
+// VERIFY REGISTER OTP
+// ---------------------------------------------------
 export const verifyRegisterOTP = async (req, res) => {
+  console.log("🔍 VERIFY REGISTER OTP:", req.body);
+
   try {
     const { email, otp } = req.body;
 
     const data = registerOTPs[email];
-    if (!data) return res.status(400).json({ message: "OTP expired or not found" });
+    if (!data) {
+      console.log("❌ No OTP found for:", email);
+      return res.status(400).json({ message: "OTP expired or missing" });
+    }
 
-    if (Date.now() > data.expiresAt)
-      return res.status(400).json({ message: "OTP expired. Request a new one." });
+    console.log("📌 Stored OTP:", data.otp);
 
-    if (Number(otp) !== Number(data.otp))
+    if (Date.now() > data.expiresAt) {
+      console.log("⏳ OTP expired for:", email);
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    if (Number(otp) !== Number(data.otp)) {
+      console.log("❌ Invalid OTP. Provided:", otp);
       return res.status(400).json({ message: "Invalid OTP" });
+    }
 
+    // Create user
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    await User.create({
-      email,
-      password: hashedPassword,
-      role: "user",
-    });
+    await User.create({ email, password: hashedPassword, role: "user" });
+
+    console.log("✅ User successfully created:", email);
 
     delete registerOTPs[email];
 
-    // Welcome Email
-    await sendMail(
-      email,
-      "Welcome!",
-      `<h2>Welcome!</h2><p>Your registration was successful 🎉</p>`
-    );
+    await sendMail(email, "Welcome!", "<h2>Welcome!</h2><p>Your registration was successful 🎉</p>");
 
-    // ⭐ FIXED: Use IST time instead of UTC
+    console.log("📧 Welcome email sent.");
+
+    // IST Time
     const now = new Date();
     const istDate = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
     const istTime = now.toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata" });
 
+    console.log("🕒 IST Date:", istDate, "| Time:", istTime);
+
+    // SEND to n8n
     try {
+      console.log("🚀 Sending data to N8N:", process.env.N8N_WEBHOOK_URL);
       await axios.post(process.env.N8N_WEBHOOK_URL, {
         email,
         date: istDate,
         time: istTime,
       });
+      console.log("✅ N8N accepted the request");
     } catch (err) {
-      console.error("N8N Webhook Error:", err.message);
+      console.error("❌ N8N ERROR:", err.message);
+      if (err.response) console.error("↳ Response:", err.response.data);
     }
 
     return res.json({ message: "Registration successful!" });
 
   } catch (error) {
-    console.error(error);
+    console.error("❌ VERIFY REGISTER OTP ERROR:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-
-
-
-
-// ---------------- Login with OTP (1 minute) ----------------
-
+// ---------------------------------------------------
+// LOGIN (SEND OTP)
+// ---------------------------------------------------
 export const login = async (req, res) => {
+  console.log("➡ LOGIN Request:", req.body);
+
   try {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
-    if (!await bcrypt.compare(password, user.password))
+    if (!user) {
+      console.log("❌ No user found:", email);
       return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      console.log("❌ Wrong password for:", email);
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
 
     const otp = generateOTP();
-    loginOTPs[email] = {
-      otp,
-      expiresAt: Date.now() + 1 * 60 * 1000,
-    };
+    loginOTPs[email] = { otp, expiresAt: Date.now() + 60 * 1000 };
 
-    // 🔹 BEAUTIFUL EMAIL TEMPLATE
+    console.log("🔢 Login OTP:", otp);
+
     await sendMail(
       email,
       "Your Login OTP",
-      buildEmailTemplate(
-        "Login Verification",
-        "Use the OTP below to login.",
-        otp
-      )
+      buildEmailTemplate("Login Verification", "Use this OTP to log in.", otp)
     );
 
-    return res.json({ message: "OTP sent to your email", email });
+    console.log("📧 Login OTP sent to:", email);
+
+    return res.json({ message: "OTP sent", email });
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ LOGIN ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ---------------- Verify Login OTP ----------------
-
+// ---------------------------------------------------
+// VERIFY LOGIN OTP
+// ---------------------------------------------------
 export const verifyOTP = async (req, res) => {
+  console.log("🔍 VERIFY LOGIN OTP:", req.body);
+
   try {
     const { email, otp } = req.body;
 
-    const stored = loginOTPs[email];
-    if (!stored) return res.status(400).json({ message: "OTP expired or not found" });
+    const data = loginOTPs[email];
+    if (!data) {
+      console.log("❌ No OTP found for:", email);
+      return res.status(400).json({ message: "OTP expired" });
+    }
 
-    if (Date.now() > stored.expiresAt)
-      return res.status(400).json({ message: "OTP expired." });
+    console.log("📌 Stored OTP:", data.otp);
 
-    if (Number(otp) !== Number(stored.otp))
+    if (Date.now() > data.expiresAt) {
+      console.log("⏳ OTP expired");
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    if (Number(otp) !== Number(data.otp)) {
+      console.log("❌ Invalid OTP:", otp);
       return res.status(400).json({ message: "Invalid OTP" });
+    }
 
     delete loginOTPs[email];
 
     const user = await User.findOne({ email });
+
+    console.log("✅ OTP verified. Logging in user:", email);
+
     return sendTokens(user, res);
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ VERIFY OTP ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ---------------- Resend OTP (Login + Register) ----------------
-
+// ---------------------------------------------------
+// RESEND OTP
+// ---------------------------------------------------
 export const resendOTP = async (req, res) => {
+  console.log("🔁 RESEND OTP Request:", req.body);
+
   try {
     const { email, type } = req.body;
 
     const otp = generateOTP();
-    const expiresAt = Date.now() + 1 * 60 * 1000;
+    const expiresAt = Date.now() + 60000;
 
     if (type === "register") {
       if (!registerOTPs[email]) registerOTPs[email] = {};
       registerOTPs[email].otp = otp;
       registerOTPs[email].expiresAt = expiresAt;
-
-      await sendMail(
-        email,
-        "New Registration OTP",
-        buildEmailTemplate(
-          "New Registration OTP",
-          "Here is your new OTP. It is valid for 1 minute.",
-          otp
-        )
-      );
     }
 
     if (type === "login") {
       if (!loginOTPs[email]) loginOTPs[email] = {};
       loginOTPs[email].otp = otp;
       loginOTPs[email].expiresAt = expiresAt;
-
-      await sendMail(
-        email,
-        "New Login OTP",
-        buildEmailTemplate(
-          "New Login OTP",
-          "Here is your new OTP. It is valid for 1 minute.",
-          otp
-        )
-      );
     }
 
-    return res.json({ message: "OTP resent successfully." });
+    console.log(`🔄 New OTP for ${type}:`, otp);
+
+    await sendMail(
+      email,
+      "New OTP",
+      buildEmailTemplate("New OTP", "Here is your fresh OTP.", otp)
+    );
+
+    console.log("📧 Resend OTP Mail sent");
+
+    res.json({ message: "OTP resent successfully" });
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ RESEND OTP ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// ---------------- Refresh / Logout / Me ----------------
-
+// ---------------------------------------------------
+// REFRESH TOKEN
+// ---------------------------------------------------
 export const refresh = async (req, res) => {
+  console.log("🔄 REFRESH token request");
+
   try {
     const token = req.cookies.jwt;
-    if (!token) return res.status(401).json({ message: "No refresh token" });
+
+    if (!token) {
+      console.log("❌ No token found in cookies");
+      return res.status(401).json({ message: "No refresh token" });
+    }
 
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    console.log("🔓 Decoded refresh token:", decoded);
 
     const user = await User.findById(decoded.id);
-    if (!user) return res.status(401).json({ message: "User not found" });
+    if (!user) {
+      console.log("❌ User not found for token:", decoded.id);
+      return res.status(401).json({ message: "User not found" });
+    }
 
     const accessToken = generateAccessToken(user);
+
+    console.log("✅ Access token refreshed");
 
     return res.json({
       accessToken,
@@ -286,28 +317,48 @@ export const refresh = async (req, res) => {
     });
 
   } catch (err) {
+    console.error("❌ REFRESH TOKEN ERROR:", err);
     return res.status(401).json({ message: "Invalid refresh token" });
   }
 };
 
+// ---------------------------------------------------
+// LOGOUT
+// ---------------------------------------------------
 export const logout = async (req, res) => {
+  console.log("🚪 LOGOUT request");
+
   res.clearCookie("jwt", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   });
 
+  console.log("✔ Token cleared");
+
   return res.json({ message: "Logged out" });
 };
 
+// ---------------------------------------------------
+// GET USER DETAILS
+// ---------------------------------------------------
 export const me = async (req, res) => {
+  console.log("👤 ME request | User ID:", req.user?.id);
+
   try {
     const user = await User.findById(req.user.id).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user) {
+      console.log("❌ User not found");
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    console.log("✅ User data returned");
 
     res.json({ user });
 
   } catch (err) {
+    console.error("❌ ME ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

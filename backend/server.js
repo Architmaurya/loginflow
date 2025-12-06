@@ -16,11 +16,11 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Allowed Frontend Origin (IMPORTANT)
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const FRONTEND_URL = process.env.FRONTEND_URL;
 
 app.use(
   cors({
-    origin: FRONTEND_URL,  
+    origin:FRONTEND_URL,  
     credentials: true,     
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   })
