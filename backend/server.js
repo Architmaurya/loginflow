@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Allowed Frontend Origin (IMPORTANT)
-const FRONTEND_URL = process.env.FRONTEND_URL;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 app.use(
   cors({
