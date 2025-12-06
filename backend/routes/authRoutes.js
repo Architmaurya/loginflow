@@ -15,9 +15,14 @@ import { protect } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 // ------------------ KEEP ALIVE ROUTE ------------------
+// authRoutes.js
+
 router.get("/welcome", (req, res) => {
-  res.json({ message: "Server is awake!" });
+  console.log("🔥 /welcome ping received at:", new Date().toISOString());
+
+  res.json({ message: "Server Awake!" });
 });
+
 
 // ------------------ REGISTER ------------------
 router.post("/register", register);
